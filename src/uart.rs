@@ -3,7 +3,6 @@ use std::collections::VecDeque;
 
 pub struct UartRx {
 
-    // TODO: coloque outros atributos que você precisar aqui
     samples_per_symbol: usize,
     to_pty: Sender<u8>,
     curbyte: u8,
@@ -13,7 +12,7 @@ pub struct UartRx {
 
 impl UartRx {
     pub fn new(samples_per_symbol: usize, to_pty: Sender<u8>) -> Self {
-        // TODO: inicialize seus novos atributos abaixo
+
         UartRx {
             samples_per_symbol,
             to_pty,
@@ -24,32 +23,38 @@ impl UartRx {
     }
 
     pub fn put_samples(&mut self, buffer: &[u8]) {
-        // TODO: seu código aqui
-
-        for sample in buffer {
+        for &sample in buffer {
             if !self.inside_frame {
-                if *sample == 0 {
+                // Procurando bit de start (0)
+                if sample == 0 {
                     self.inside_frame = true;
                     self.pos_frame = 0;
-                    self.curbyte = 0
+                    self.curbyte = 0;
                 }
             } else {
                 self.pos_frame += 1;
+
+                // Captura o bit no meio do símbolo
                 if self.pos_frame % self.samples_per_symbol == self.samples_per_symbol / 2 {
-                    self.curbyte = (self.curbyte >> 1) | (sample << 7);
-                    if self.pos_frame / self.samples_per_symbol == 8 {
-
-                        self.to_pty.send(self.curbyte).unwrap();
-
+                    // Desloca para a direita, armazena o bit mais significativo primeiro
+                    self.curbyte >>= 1;
+                    if sample == 1 {
+                        self.curbyte |= 0b1000_0000;
                     }
 
+                    // Se capturamos 8 bits (1 byte)
+                    if self.pos_frame / self.samples_per_symbol == 8 {
+                        // Enviar o byte construído para a PTY
+                        self.to_pty.send(self.curbyte).unwrap();
+                    }
+
+                    // Se estamos no 9º bit, é o bit de stop, então resetamos o frame
                     if self.pos_frame / self.samples_per_symbol == 9 {
-                        self.inside_frame = false
+                        self.inside_frame = false;
                     }
                 }
             }
         }
-        //self.to_pty.send(65).unwrap();  // TODO: remova esta linha, é um exemplo de como mandar um byte para a pty
     }
 }
 
